@@ -1,0 +1,80 @@
+########################################################################
+# Public configuration variables.
+ARG FREEBSD_HOST_SRC_PATH=/usr/src
+
+ARG SYZKALLER_DATASET=zroot/syzkaller
+ARG SYZKALLER_NUM_VMS=2
+
+ARG JFLAG=-j4
+ARG TOOLCHAIN=llvm11
+
+# Private configuration variables, not really meant to be overridable.
+ARG _SYZKALLER_SRC_PATH=/root/syzkaller
+ARG _FREEBSD_BUILDROOT=/root/build
+ARG _FREEBSD_SRC_PATH=/root/freebsd
+ARG _FREEBSD_BUILD_SRCCONF=/root/src.conf
+
+ARG _SYZKALLER_ROOT=/syzkaller
+ARG _SYZKALLER_BRIDGE=syzbridge
+ARG _SYZKALLER_BRIDGE_IP=169.254.0.1
+ARG _SYZKALLER_SSH_KEY=${_SYZKALLER_ROOT}/id_rsa
+ARG _SYZKALLER_VM_IMG=${_SYZKALLER_ROOT}/vm.raw
+
+########################################################################
+# Get a copy of the syzkaller sources and build them.
+PKG dnsmasq go gmake llvm ${TOOLCHAIN} gcc bash git-lite golangci-lint
+
+CMD [ ! -d ${_SYZKALLER_SRC_PATH} ] && git clone https://github.com/google/syzkaller ${_SYZKALLER_SRC_PATH}
+CMD git -C ${_SYZKALLER_SRC_PATH} pull
+# Left unchecked, the Go toolchain will take enormous amounts of RAM, so limit
+# the number of compiler processes.  Note that this does not limit the build to
+# 2 cores, despite the name.
+CMD gmake -C ${_SYZKALLER_SRC_PATH} NCORES=2
+
+# Create an SSH key used by the fuzzer to access VMs.
+# Don't overwrite an existing one, ssh-keygen will prompt.
+CMD [ ! -f ${_SYZKALLER_SSH_KEY} ] && ssh-keygen -t rsa -f ${_SYZKALLER_SSH_KEY} -N ""
+
+CP syz-manager.conf ${_SYZKALLER_ROOT}
+RENDER ${_SYZKALLER_ROOT}/syz-manager.conf
+
+CP etc /usr/local
+RENDER /usr/local/etc
+
+# Configure the network.  We need a bridge interface for the VMs and a dnsmasq
+# instance to hand out IPs.
+SYSRC cloned_interfaces="bridge0"
+SYSRC ifconfig_bridge0_name="${_SYZKALLER_BRIDGE}"
+SYSRC ifconfig_${_SYZKALLER_BRIDGE}="inet ${_SYZKALLER_BRIDGE_IP}"
+SERVICE netif restart
+SYSRC dnsmasq_enable="YES"
+SERVICE dnsmasq restart
+
+########################################################################
+# Build a VM image.
+
+# Mount a source tree from the host.
+# Work around a Bastille bug, it is supposed to create the mount point dir.
+CMD mkdir -p ${_FREEBSD_SRC_PATH}
+MOUNT ${FREEBSD_HOST_SRC_PATH} ${_FREEBSD_SRC_PATH}
+
+CP src.conf ${_FREEBSD_BUILD_SRCCONF}
+RENDER ${_FREEBSD_BUILD_SRCCONF}
+CP SYZKALLER /root
+
+CMD mkdir -p ${_FREEBSD_BUILDROOT}
+CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} buildworld SRCCONF=${_FREEBSD_BUILD_SRCCONF}
+CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} buildkernel KERNCONF=SYZKALLER KERNCONFDIR=/root SRCCONF=${_FREEBSD_BUILD_SRCCONF}
+CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} installworld -DNO_FSCHG DESTDIR=${_FREEBSD_BUILDROOT} SRCCONF=${_FREEBSD_BUILD_SRCCONF}
+CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} installkernel -DNO_FSCHG KERNCONF=SYZKALLER KERNCONFDIR=/root DESTDIR=${_FREEBSD_BUILDROOT} SRCCONF=${_FREEBSD_BUILD_SRCCONF}
+CMD make -C ${_FREEBSD_SRC_PATH} distribution -DNO_FSCHG DESTDIR=${_FREEBSD_BUILDROOT} SRCCONF=${_FREEBSD_BUILD_SRCCONF}
+
+CP vm/etc/ ${_FREEBSD_BUILDROOT}/etc
+CMD touch ${_FREEBSD_BUILDROOT}/firstboot
+CMD mkdir -p ${_FREEBSD_BUILDROOT}/root/.ssh
+CMD cp -f ${_SYZKALLER_SSH_KEY}.pub ${_FREEBSD_BUILDROOT}/root/.ssh/authorized_keys
+CMD echo "PermitRootLogin without-password" >> ${_FREEBSD_BUILDROOT}/etc/ssh/sshd_config
+
+# And build it.
+CMD makefs -B little -M 10g -S 512 -Z -o label=VM -o softupdates=1 -o version=2 /root/vm.part ${_FREEBSD_BUILDROOT}
+CMD mkimg -s gpt -f raw -S 512 -b ${_FREEBSD_BUILDROOT}/boot/pmbr -p freebsd-boot/bootfs:=${_FREEBSD_BUILDROOT}/boot/gptboot -p freebsd-ufs/rootfs:=/root/vm.part -o ${_SYZKALLER_VM_IMG}

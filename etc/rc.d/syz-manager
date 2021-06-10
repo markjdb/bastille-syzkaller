@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# PROVIDE: syz-manager
+# REQUIRE: login
+
+. /etc/rc.subr
+
+name="syz_manager"
+syz_manager_env="PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin"
+procname="syz-manager"
+start_precmd="syz_manager_prestart"
+start_cmd="syz_manager_start"
+stop_cmd="syz_manager_stop"
+pidfile=/var/run/syz-manager.pid
+rcvar="syz_manager_enable"
+
+load_rc_config $name
+
+syz_manager_prestart()
+{
+	if ! kldstat -q -n vmm; then
+		warn "The vmm(4) module is not loaded."
+	fi
+}
+
+syz_manager_start()
+{
+	daemon -o /root/syzkaller.log -t $procname -p $pidfile ${_SYZKALLER_SRC_PATH}/bin/syz-manager -config /syzkaller/syz-manager.conf
+}
+
+syz_manager_stop()
+{
+	pkill -F $pidfile
+}
+
+run_rc_command "$1"

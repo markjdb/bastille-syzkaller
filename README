@@ -1,0 +1,108 @@
+## Introduction ##
+
+syzkaller is a coverage-guided kernel fuzzer: https://github.com/google/syzkaller
+It is very good at finding certain types of kernel bugs and can be useful
+for regression testing as part of a CI pipeline.  syzkaller manages a set
+of virtual machines running the target operating system; the VMs run the
+fuzzer, and the manager collects information about kernel crashes and attempts
+to find reproducers.
+
+Once the template is applied, a syzkaller installation is available in the
+jail.  syzkaller can be started and stopped using the syz-manager rc script.
+
+The template builds a FreeBSD VM image and sets up all of the necessary
+configuration for syzkaller to use it.  A few manual steps are currently
+required, as listed below.
+
+## Configuration variables ##
+
+Some configuration can be tweaked by passing parameters to the template:
+
+FREEBSD_HOST_SRC_PATH:	Path to a FreeBSD src tree on the host.  This is
+                        null-mounted into the jail and used to build the
+			base VM image and custom kernel required by
+			syzkaller.  Defaults to /usr/src.
+
+SYZKALLER_DATASET:	When syzkaller uses bhyve to run VMs, it needs a ZFS
+			dataset in order to create snapshots of the base image.
+			This parameter specifies that dataset's name.  See
+			below for details on how to create and configure the
+			dataset.  Defaults to zroot/syzkaller.
+
+SYZKALLER_NUM_VMS:	Number of VMs to run when fuzzing.  Running more than
+                        NCPU VMs is not recommended.  Defaults to 2.
+
+JFLAG:			Flag passed to make(1) when building the VM image and
+                        kernel.  Typically something like
+			JFLAG=-j$(sysctl -n hw.ncpu) is optimal.  Defaults to
+			"-j4".
+
+## Manual configuration steps ##
+
+This template does 90% of what is needed to set up syzkaller in a Bastille
+jail.  A few steps must be applied manually after creating the jail and before
+applying the template.  Specifically, we need custom devfs rules and a ZFS
+dataset owned by the jail.  These steps are described below.
+
+1. The vnet container requires a custom devfs ruleset to expose /dev/bpf, as
+   this is required by the DHCP client.  syzkaller requires some additional
+   device nodes.  Create a devfs ruleset for that, by adding the following to
+   /etc/devfs.rules:
+
+   [bastille_vnet_syzkaller=14]
+   add include $devfsrules_hide_all
+   add include $devfsrules_unhide_basic
+   add include $devfsrules_unhide_login
+
+   add path 'bpf*' unhide
+   add path 'tap*' unhide
+   add path 'vmm' unhide
+   add path 'vmm/*' unhide
+   add path 'vmm.io' unhide
+   add path 'vmm.io/*' unhide
+   add path 'zfs' unhide
+
+   Then load the ruleset:
+
+   # service devfs restart
+
+2. Create a vnet container for syzkaller, and specify our custom ruleset:
+
+   # bastille bootstrap 13.0-RELEASE
+   # bastille create -V syzkaller 13.0-RELEASE 0.0.0.0 epair0b
+   # bastille config syzkaller set devfs_ruleset 14
+   # bastille restart syzkaller
+
+3. Create a ZFS dataset for syzkaller's use:
+
+   # zfs create -u -o mountpoint=/syzkaller -o jailed=on -o canmount=off zroot/syzkaller
+
+4. Edit the jail fstab to mount the dataset automatically at /syzkaller in the
+   jail:
+
+   # echo "zroot/syzkaller /usr/local/bastille/jails/syzkaller/root/syzkaller zfs rw 0 0" >> \
+     /usr/local/bastille/jails/syzkaller/fstab
+
+   Create the corresponding directory:
+
+   # mkdir /usr/local/bastille/jails/syzkaller/root/syzkaller
+
+5. Configure the jail to own the dataset and restart it:
+
+   # bastille config syzkaller set exec.created 'zfs jail syzkaller zroot/syzkaller'
+   # bastille config syzkaller set allow.mount
+   # bastille config syzkaller set allow.mount.zfs
+   # bastille config syzkaller set allow.vmm
+   # bastille config syzkaller set enforce_statfs=1
+   # kldload vmm
+   # bastille restart syzkaller
+
+6. Finally we can apply the template and start syzkaller:
+
+   # bastille bootstrap https://github.com/markjdb/bastille-syzkaller
+   # bastille template syzkaller markjdb/bastille-syzkaller --arg JFLAG=-j$(sysctl -n hw.ncpu)
+   < go get a cup of coffee >
+   # bastille service syzkaller syz-manager onestart
+
+   Now load http://syzkaller:8080 in your browser of choice and watch it go.
+   syz-manager logs its output to /root/syz-manager.log in the jail.
