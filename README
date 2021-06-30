@@ -42,7 +42,9 @@ JFLAG:			Flag passed to make(1) when building the VM image and
 This template does 90% of what is needed to set up syzkaller in a Bastille
 jail.  A few steps must be applied manually after creating the jail and before
 applying the template.  Specifically, we need custom devfs rules and a ZFS
-dataset owned by the jail.  These steps are described below.
+dataset owned by the jail.  These steps are described below.  Substitute
+$jailname with the name of the jail and $syzdataset with the name of the
+ZFS dataset used by syzkaller.
 
 1. The vnet container requires a custom devfs ruleset to expose /dev/bpf, as
    this is required by the DHCP client.  syzkaller requires some additional
@@ -69,19 +71,19 @@ dataset owned by the jail.  These steps are described below.
 2. Create a vnet container for syzkaller, and specify our custom ruleset:
 
    # bastille bootstrap 13.0-RELEASE
-   # bastille create -V syzkaller 13.0-RELEASE 0.0.0.0 epair0b
-   # bastille config syzkaller set devfs_ruleset 14
-   # bastille restart syzkaller
+   # bastille create -V $jailname 13.0-RELEASE 0.0.0.0 epair0b
+   # bastille config $jailname set devfs_ruleset 14
+   # bastille restart $jailname
 
 3. Create a ZFS dataset for syzkaller's use:
 
-   # zfs create -u -o mountpoint=/syzkaller -o jailed=on -o canmount=off zroot/syzkaller
+   # zfs create -u -o mountpoint=/syzkaller -o jailed=on -o canmount=off $syzdataset
 
 4. Edit the jail fstab to mount the dataset automatically at /syzkaller in the
    jail:
 
-   # echo "zroot/syzkaller /usr/local/bastille/jails/syzkaller/root/syzkaller zfs rw 0 0" >> \
-     /usr/local/bastille/jails/syzkaller/fstab
+   # echo "$syzdataset /usr/local/bastille/jails/$jailname/root/syzkaller zfs rw 0 0" >> \
+     /usr/local/bastille/jails/$jailname/fstab
 
    Create the corresponding directory:
 
@@ -89,20 +91,20 @@ dataset owned by the jail.  These steps are described below.
 
 5. Configure the jail to own the dataset and restart it:
 
-   # bastille config syzkaller set exec.created 'zfs jail syzkaller zroot/syzkaller'
-   # bastille config syzkaller set allow.mount
-   # bastille config syzkaller set allow.mount.zfs
-   # bastille config syzkaller set allow.vmm
-   # bastille config syzkaller set enforce_statfs=1
+   # bastille config $jailname set exec.created 'zfs jail $jailname $syzdataset'
+   # bastille config $jailname set allow.mount
+   # bastille config $jailname set allow.mount.zfs
+   # bastille config $jailname set allow.vmm
+   # bastille config $jailname set enforce_statfs=1
    # kldload vmm
-   # bastille restart syzkaller
+   # bastille restart $jailname
 
 6. Finally we can apply the template and start syzkaller:
 
    # bastille bootstrap https://github.com/markjdb/bastille-syzkaller
-   # bastille template syzkaller markjdb/bastille-syzkaller --arg JFLAG=-j$(sysctl -n hw.ncpu)
+   # bastille template $jailname markjdb/bastille-syzkaller --arg JFLAG=-j$(sysctl -n hw.ncpu)
    < go get a cup of coffee >
-   # bastille service syzkaller syz-manager onestart
+   # bastille service $jailname syz-manager onestart
 
-   Now load http://syzkaller:8080 in your browser of choice and watch it go.
+   Now load http://$jailname:8080 in your browser of choice and watch it go.
    syz-manager logs its output to /root/syz-manager.log in the jail.
