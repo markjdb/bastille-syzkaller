@@ -87,7 +87,7 @@ ZFS dataset used by syzkaller.
 
    Create the corresponding directory:
 
-   # mkdir /usr/local/bastille/jails/syzkaller/root/syzkaller
+   # mkdir /usr/local/bastille/jails/$jailname/root/syzkaller
 
 5. Configure the jail to own the dataset and restart it:
 
