@@ -25,12 +25,17 @@ syz_manager_prestart()
 
 syz_manager_start()
 {
-	daemon -o /root/syzkaller.log -t $procname -p $pidfile ${_SYZKALLER_SRC_PATH}/bin/syz-manager -config /syzkaller/syz-manager.conf
+	nice -n 20 daemon -o /root/syzkaller.log -t $procname -p $pidfile \
+            ${_SYZKALLER_SRC_PATH}/bin/syz-manager -config /syzkaller/syz-manager.conf
 }
 
 syz_manager_stop()
 {
-	pkill -F $pidfile
+	local pid
+
+	pid=$(cat $pidfile)
+	kill $pid
+	pwait $pid
 }
 
 run_rc_command "$1"
