@@ -91,7 +91,7 @@ ZFS dataset used by syzkaller.
 
 5. Configure the jail to own the dataset and restart it:
 
-   # bastille config $jailname set exec.created 'zfs jail $jailname $syzdataset'
+   # bastille config $jailname set exec.created "zfs jail $jailname $syzdataset"
    # bastille config $jailname set allow.mount
    # bastille config $jailname set allow.mount.zfs
    # bastille config $jailname set allow.vmm
