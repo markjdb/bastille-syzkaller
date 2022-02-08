@@ -64,6 +64,7 @@ RENDER ${_FREEBSD_BUILD_SRCCONF}
 CP SYZKALLER /root
 CP build.sh /root
 RENDER /root/build.sh
+CMD chmod u+x /root/build.sh
 
 CMD mkdir -p ${_FREEBSD_BUILDROOT}
 CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} buildworld SRCCONF=${_FREEBSD_BUILD_SRCCONF}
