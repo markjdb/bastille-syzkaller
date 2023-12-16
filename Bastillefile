@@ -6,7 +6,7 @@ ARG SYZKALLER_DATASET=zroot/syzkaller
 ARG SYZKALLER_NUM_VMS=2
 
 ARG JFLAG=-j4
-ARG TOOLCHAIN=llvm13
+ARG TOOLCHAIN=llvm16
 
 # Private configuration variables, not really meant to be overridable.
 ARG _SYZKALLER_SRC_PATH=/root/syzkaller
