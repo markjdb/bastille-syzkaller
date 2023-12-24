@@ -68,9 +68,7 @@ CMD chmod u+x /root/build.sh
 
 CMD mkdir -p ${_FREEBSD_BUILDROOT}
 CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} buildworld -s SRCCONF=${_FREEBSD_BUILD_SRCCONF}
-CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} buildkernel -s KERNCONF=SYZKALLER KERNCONFDIR=/root SRCCONF=${_FREEBSD_BUILD_SRCCONF}
 CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} installworld -s -DNO_FSCHG DESTDIR=${_FREEBSD_BUILDROOT} SRCCONF=${_FREEBSD_BUILD_SRCCONF}
-CMD make -C ${_FREEBSD_SRC_PATH} ${JFLAG} installkernel -s -DNO_FSCHG KERNCONF=SYZKALLER KERNCONFDIR=/root DESTDIR=${_FREEBSD_BUILDROOT} SRCCONF=${_FREEBSD_BUILD_SRCCONF}
 CMD make -C ${_FREEBSD_SRC_PATH} distribution -DNO_FSCHG DESTDIR=${_FREEBSD_BUILDROOT} SRCCONF=${_FREEBSD_BUILD_SRCCONF}
 
 CP vm/etc/ ${_FREEBSD_BUILDROOT}/etc
@@ -80,5 +78,4 @@ CMD cp -f ${_SYZKALLER_SSH_KEY}.pub ${_FREEBSD_BUILDROOT}/root/.ssh/authorized_k
 CMD echo "PermitRootLogin without-password" >> ${_FREEBSD_BUILDROOT}/etc/ssh/sshd_config
 
 # And build it.
-CMD makefs -B little -M 10g -S 512 -Z -o label=VM -o softupdates=1 -o version=2 /root/vm.part ${_FREEBSD_BUILDROOT}
-CMD mkimg -s gpt -f raw -S 512 -b ${_FREEBSD_BUILDROOT}/boot/pmbr -p freebsd-boot/bootfs:=${_FREEBSD_BUILDROOT}/boot/gptboot -p freebsd-ufs/rootfs:=/root/vm.part -o ${_SYZKALLER_VM_IMG}
+CMD /root/build.sh -a
