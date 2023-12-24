@@ -5,6 +5,8 @@ ARG FREEBSD_HOST_SRC_PATH=/usr/src
 ARG SYZKALLER_DATASET=zroot/syzkaller
 ARG SYZKALLER_NUM_VMS=2
 
+ARG VMFS=ufs
+
 ARG JFLAG=-j4
 ARG TOOLCHAIN=llvm16
 
@@ -78,4 +80,4 @@ CMD cp -f ${_SYZKALLER_SSH_KEY}.pub ${_FREEBSD_BUILDROOT}/root/.ssh/authorized_k
 CMD echo "PermitRootLogin without-password" >> ${_FREEBSD_BUILDROOT}/etc/ssh/sshd_config
 
 # And build it.
-CMD /root/build.sh -a
+CMD /root/build.sh -a -t ${VMFS}

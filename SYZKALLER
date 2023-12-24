@@ -4,3 +4,4 @@ ident SYZKALLER
 
 options COVERAGE
 options KCOV
+options ZFS
